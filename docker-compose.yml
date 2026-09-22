@@ -1,0 +1,72 @@
+name: simple-stock-flow
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is missing from .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Waits until the engine accepts connections, not just until the container exists.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  service:
+    # The portal's nginx proxies to this host name: renaming it breaks the front end.
+    build:
+      context: ../simple-stock-flow-api
+      dockerfile: Dockerfile
+    environment:
+      ConnectionStrings__Postgres: Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      Jwt__SigningKey: ${JWT_SIGNING_KEY}
+      Bootstrap__AdminUsername: ${ADMIN_USERNAME}
+      Bootstrap__AdminPassword: ${ADMIN_PASSWORD}
+      Storage__RootPath: /var/lib/simple-stock-flow/media
+      Storage__PublicBaseUrl: /media
+      Cors__Origins__0: http://localhost:${PORTAL_PORT}
+      # On by default, and on here on purpose. This environment is Production, and while the
+      # documentation hung off IsDevelopment() it was missing from the only deployment anyone
+      # reads it in. A real deployment sets SWAGGER_ENABLED=false in .env.
+      Swagger__Enabled: ${SWAGGER_ENABLED:-true}
+      ASPNETCORE_ENVIRONMENT: Production
+    volumes:
+      # Uploaded binaries live in a volume, never inside the image.
+      - media:/var/lib/simple-stock-flow/media
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/8080' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  portal:
+    build:
+      context: ../simple-stock-flow-portal
+      dockerfile: Dockerfile
+    ports:
+      - "${PORTAL_PORT}:80"
+    depends_on:
+      service:
+        condition: service_healthy
+    healthcheck:
+      # Explicit IPv4: nginx listens on 0.0.0.0 only, and inside the container localhost
+      # resolves to ::1 first, which nothing is serving.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  media:

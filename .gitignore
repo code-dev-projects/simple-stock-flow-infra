@@ -1,0 +1,9 @@
+# The real secrets live here and are never versioned.
+.env
+
+# Local verification output
+*.log
+
+# The annex re-measure script writes its response bodies here. It cleans up after itself, but
+# an interrupted run leaves the file behind and it would enter the first commit unnoticed.
+.anexo-body.tmp

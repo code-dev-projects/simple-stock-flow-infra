@@ -1,0 +1,16 @@
+# Publishes the ports that development needs and production must not expose:
+# the database, so a client can inspect it, and the API, so `ng serve` can reach it.
+# Use it in development only:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+services:
+  db:
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+  # The portal's proxy.conf.json forwards /api and /media here when running `ng serve`.
+  # Without this the dev proxy has nothing to talk to: the default compose keeps the API
+  # inside the network and only the portal is published. It is also what puts Swagger on
+  # http://localhost:5000/swagger; through the portal it is reachable without this overlay.
+  service:
+    ports:
+      - "${SERVICE_PORT:-5000}:8080"
